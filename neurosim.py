@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def _alphas(v, v_r):
@@ -45,8 +46,8 @@ class HHModel:
         self.E_leak = -49.2e-3
 
         self.V_r = -60e-3  # Resting potential
-        self.V_m_initial = -60e-3  # initial membrane potential
-        self.V_thr = self. V_r + 15e-3
+        self.V_m_initial = membrane_potential  # initial membrane potential
+        self.V_thr = self.V_r + 15e-3
 
         self.I_s = 0  # Stimulus current
         self.I_m = 0  # total membrane current for patch if no stimulus
@@ -90,9 +91,32 @@ class HHModel:
         self.time_interval = np.arange(0, duration + self.dt, self.dt)
 
     def run(self):
+        self._initial_step()
+        print(len(self.time_interval))
+        for t in range(1, len(self.time_interval)):
+            alpha_m, alpha_h, alpha_n = _alphas(self.V_membrane[t - 1], self.V_r)
+            beta_m, beta_h, beta_n = _betas(self.V_membrane[t - 1], self.V_r)
+
+            self.m[t] = self.m[t - 1] + self.dt * (alpha_m * (1 - self.m[t - 1]) - beta_m * self.m[t - 1])
+            self.h[t] = self.h[t - 1] + self.dt * (alpha_h * (1 - self.h[t - 1]) - beta_h * self.h[t - 1])
+            self.n[t] = self.n[t - 1] + self.dt * (alpha_n * (1 - self.n[t - 1]) - beta_n * self.n[t - 1])
+
+            self.conductance_k[t] = self.n[t] ** 4 * self.max_conductivity_K
+            self.conductance_na[t] = self.m[t] ** 3 * self.h[t] * self.max_conductivity_Na
+
+            self.I_k[t] = self.conductance_k[t] * (self.V_membrane[t - 1] - self.E_k)
+            self.I_na[t] = self.conductance_na[t] * (self.V_membrane[t - 1] - self.E_na)
+            self.I_leak[t] = self.conductance_leak[t] * (self.V_membrane[t - 1] - self.E_leak)
+            self.I_membrane[t] = self.I_k[t] + self.I_na[t] + self.I_leak[t]
+
+            self.V_membrane[t] = self.V_membrane[t - 1] + (self.dt / self.cap_membrane) * (
+                    self.I_stimulus[t] - self.I_k[t] - self.I_na[t] - self.I_leak[t])
         pass
 
     def _initial_step(self):
+        self.V_membrane = np.zeros(len(self.time_interval))
+        self.V_membrane[0] = self.V_m_initial
+
         self.m = np.zeros(len(self.time_interval))
         self.m[0] = self.m_0
         self.h = np.zeros(len(self.time_interval))
@@ -100,32 +124,55 @@ class HHModel:
         self.n = np.zeros(len(self.time_interval))
         self.n[0] = self.n_0
 
-        conductance_na = np.zeros(len(time_interval))
-        conductance_na[0] = max_conductivity_Na * m[0] ** 3 * h[0]
-        I_na = np.zeros(len(time_interval))
-        I_na[0] = conductance_na[0] * (V_membrane[0] - E_na)
+        self.conductance_na = np.zeros(len(self.time_interval))
+        self.conductance_na[0] = self.max_conductivity_Na * self.m[0] ** 3 * self.h[0]
+        self.I_na = np.zeros(len(self.time_interval))
+        self.I_na[0] = self.conductance_na[0] * (self.V_membrane[0] - self.E_na)
 
-        conductance_k = np.zeros(len(time_interval))
-        conductance_k[0] = max_conductivity_K * n[0] ** 4
-        I_k = np.zeros(len(time_interval))
-        I_k[0] = conductance_k[0] * (V_membrane[0] - E_k)
+        self.conductance_k = np.zeros(len(self.time_interval))
+        self.conductance_k[0] = self.max_conductivity_K * self.n[0] ** 4
+        self.I_k = np.zeros(len(self.time_interval))
+        self.I_k[0] = self.conductance_k[0] * (self.V_membrane[0] - self.E_k)
 
-        conductance_leak = np.repeat(max_conductivity_leak, len(time_interval))
-        I_leak = np.zeros(len(time_interval))
-        I_leak[0] = conductance_leak[0] * (V_membrane[0] - E_leak)
+        self.conductance_leak = np.repeat(self.max_conductivity_leak, len(self.time_interval))
+        self.I_leak = np.zeros(len(self.time_interval))
+        self.I_leak[0] = self.conductance_leak[0] * (self.V_membrane[0] - self.E_leak)
 
-        I_stimulus = np.zeros(len(time_interval))
-        I_stimulus[0:int(inject_time // dt)] = I_inj
+        self.V_membrane[0] = self.V_r + (self.dt / self.cap_membrane) * (
+                    self.I_stimulus[0] - self.I_k[0] - self.I_na[0] - self.I_leak[0])
 
-        V_membrane[0] = V_r + (dt / cap_membrane) * (-I_k[0] - I_na[0] - I_leak[0] + I_stimulus[0])
-
-        I_membrane = np.zeros(len(time_interval))
-        I_membrane[0] = I_na[0] + I_k[0] + I_leak[0]
+        self.I_membrane = np.zeros(len(self.time_interval))
+        self.I_membrane[0] = self.I_na[0] + self.I_k[0] + self.I_leak[0]
 
         pass
 
     def plot(self):
-        pass
+        plt.plot(self.time_interval, self.m, label="m")
+        plt.plot(self.time_interval, self.n, label="n")
+        plt.plot(self.time_interval, self.h, label="h")
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+        plt.plot(self.time_interval, self.conductance_k, label="g_K")
+        plt.plot(self.time_interval, self.conductance_na, label="g_Na")
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+        plt.plot(self.time_interval, self.I_k, label="J_K")
+        plt.plot(self.time_interval, self.I_na, label="J_Na")
+        #plt.plot(self.time_interval, self.I_leak, label="J_leak")
+        #plt.plot(self.time_interval, self.I_membrane, label="J_membrane")
+        #plt.plot(self.time_interval, self.I_stimulus, label="J_Stimulus")
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+        plt.plot(self.time_interval, self.V_membrane, label="V_membrane")
+        plt.grid()
+        plt.legend()
+        plt.show()
 
     def stimulus_signal(self, amplitude, duration, freq=None):
         """
@@ -136,7 +183,4 @@ class HHModel:
         :return:
         """
         self.I_stimulus = np.zeros(len(self.time_interval))
-        self.I_stimulus[0:int(duration // self.dt)] = amplitude
-
-    def _betas(self):
-        pass
+        self.I_stimulus[:int(duration / self.dt)] = amplitude
