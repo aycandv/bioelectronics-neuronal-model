@@ -10,6 +10,7 @@ def _alphas(v, v_r):
     :return:
     """
     dv = (v - v_r) * 1000
+    print(v, v_r)
     mul = 1000
     alpha_m = 0.1 * (25 - dv) / ((np.exp((25 - dv) / 10)) - 1) * mul
     alpha_h = 0.07 * np.exp(-dv / 20) * mul
@@ -114,7 +115,7 @@ class HHModel:
         pass
 
     def _initial_step(self):
-        self.V_membrane = np.zeros(len(self.time_interval))
+        self.V_membrane = np.zeros(len(self.time_interval), dtype=np.float128)
         self.V_membrane[0] = self.V_m_initial
 
         self.m = np.zeros(len(self.time_interval))
@@ -139,7 +140,7 @@ class HHModel:
         self.I_leak[0] = self.conductance_leak[0] * (self.V_membrane[0] - self.E_leak)
 
         self.V_membrane[0] = self.V_r + (self.dt / self.cap_membrane) * (
-                    self.I_stimulus[0] - self.I_k[0] - self.I_na[0] - self.I_leak[0])
+                self.I_stimulus[0] - self.I_k[0] - self.I_na[0] - self.I_leak[0])
 
         self.I_membrane = np.zeros(len(self.time_interval))
         self.I_membrane[0] = self.I_na[0] + self.I_k[0] + self.I_leak[0]
@@ -162,9 +163,9 @@ class HHModel:
 
         plt.plot(self.time_interval, self.I_k, label="J_K")
         plt.plot(self.time_interval, self.I_na, label="J_Na")
-        #plt.plot(self.time_interval, self.I_leak, label="J_leak")
-        #plt.plot(self.time_interval, self.I_membrane, label="J_membrane")
-        #plt.plot(self.time_interval, self.I_stimulus, label="J_Stimulus")
+        # plt.plot(self.time_interval, self.I_leak, label="J_leak")
+        # plt.plot(self.time_interval, self.I_membrane, label="J_membrane")
+        # plt.plot(self.time_interval, self.I_stimulus, label="J_Stimulus")
         plt.grid()
         plt.legend()
         plt.show()
@@ -183,4 +184,9 @@ class HHModel:
         :return:
         """
         self.I_stimulus = np.zeros(len(self.time_interval))
-        self.I_stimulus[:int(duration / self.dt)] = amplitude
+        if freq is None:
+            self.I_stimulus[:int(duration / self.dt)] = amplitude
+        else:
+            self.I_stimulus[:int(duration / self.dt)] = amplitude * np.sin(2*np.pi*freq*self.time_interval[:int(duration / self.dt)])
+
+        return self.time_interval, self.I_stimulus
