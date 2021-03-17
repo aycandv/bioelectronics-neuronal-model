@@ -10,7 +10,7 @@ def _alphas(v, v_r):
     :return:
     """
     dv = (v - v_r) * 1000
-    print(v, v_r)
+    # print(v, v_r)
     mul = 1000
     alpha_m = 0.1 * (25 - dv) / ((np.exp((25 - dv) / 10)) - 1) * mul
     alpha_h = 0.07 * np.exp(-dv / 20) * mul
@@ -164,8 +164,8 @@ class HHModel:
         plt.plot(self.time_interval, self.I_k, label="J_K")
         plt.plot(self.time_interval, self.I_na, label="J_Na")
         # plt.plot(self.time_interval, self.I_leak, label="J_leak")
-        # plt.plot(self.time_interval, self.I_membrane, label="J_membrane")
-        # plt.plot(self.time_interval, self.I_stimulus, label="J_Stimulus")
+        plt.plot(self.time_interval, self.I_membrane, label="J_membrane")
+        plt.plot(self.time_interval, self.I_stimulus, label="J_Stimulus")
         plt.grid()
         plt.legend()
         plt.show()
@@ -175,18 +175,15 @@ class HHModel:
         plt.legend()
         plt.show()
 
-    def stimulus_signal(self, amplitude, duration, freq=None):
-        """
-
-        :param amplitude:
-        :param duration:
-        :param freq:
-        :return:
-        """
-        self.I_stimulus = np.zeros(len(self.time_interval))
+    def stimulus_signal(self, amplitude, duration, start_time=0, freq=None):
+        if self.I_stimulus is None:
+            self.I_stimulus = np.zeros(len(self.time_interval))
         if freq is None:
-            self.I_stimulus[:int(duration / self.dt)] = amplitude
+            self.I_stimulus[int(start_time / self.dt):int((duration + start_time) / self.dt)] = amplitude
+            print(int(start_time / self.dt))
+            print(int((duration + start_time) / self.dt))
         else:
-            self.I_stimulus[:int(duration / self.dt)] = amplitude * np.sin(2*np.pi*freq*self.time_interval[:int(duration / self.dt)])
+            self.I_stimulus[int(start_time / self.dt):int((duration+start_time) / self.dt)] = amplitude * np.sin(
+                2 * np.pi * freq * self.time_interval[int(start_time / self.dt):int((duration+start_time) / self.dt)])
 
         return self.time_interval, self.I_stimulus
