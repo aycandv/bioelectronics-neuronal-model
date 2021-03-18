@@ -4,13 +4,13 @@ import matplotlib.pyplot as plt
 
 def _alphas(v, v_r):
     """
-
-    :param v:
-    :param v_r:
-    :return:
+    Calculates alpha parameters using current membrane potential
+    and resting potential in units of milli volts.
+    :param v: Membrane potential in milli volts. float.
+    :param v_r: Membrane potential in milli volts. float.
+    :return: A tuple of three alpha parameters.
     """
     dv = (v - v_r) * 1000
-    # print(v, v_r)
     mul = 1000
     alpha_m = 0.1 * (25 - dv) / ((np.exp((25 - dv) / 10)) - 1) * mul
     alpha_h = 0.07 * np.exp(-dv / 20) * mul
@@ -20,10 +20,11 @@ def _alphas(v, v_r):
 
 def _betas(v, v_r):
     """
-
-    :param v:
-    :param v_r:
-    :return:
+    Calculates beta parameters using current membrane potential
+    and resting potential in units of milli volts.
+    :param v: Membrane potential in milli volts. float.
+    :param v_r: Membrane potential in milli volts. float.
+    :return: A tuple of three beta parameters.
     """
     dv = (v - v_r) * 1000
     mul = 1000
@@ -35,6 +36,12 @@ def _betas(v, v_r):
 
 class HHModel:
     def __init__(self, membrane_potential=-60e-3):
+        """
+        Initializes HHModel and all required parameters will be used
+        in simulation.
+        :param membrane_potential: Membrane potential of the cell.
+        Default value is -60e-3 V.
+        """
         self.max_conductivity_K = 36e-3
         self.max_conductivity_Na = 120e-3
         self.max_conductivity_leak = 0.3e-3
@@ -81,40 +88,59 @@ class HHModel:
         self.I_stimulus = None
         self.I_membrane = None
 
-        pass
-
     def simulation(self, duration):
         """
-
-        :param duration:
+        After initializing HHModel, this function should be called.
+        :param duration: duration of simulation in seconds.
         :return:
         """
         self.time_interval = np.arange(0, duration + self.dt, self.dt)
 
     def run(self):
+        """
+        In an iterative approach, it calculates conductivities of ions,
+        m,n and h particles, ionic currents and membrane potential at
+        each time step so that it can be plotted to observe results.
+        Before stepping into for loop, it initializes parameters such as
+        maximum conductivity before simulation starts.
+        :return:
+        """
+
+        # Initializing all variables. Setting initial parameters
+        # such as m, n, h, Vm to be able to run simulation.
         self._initial_step()
-        print(len(self.time_interval))
         for t in range(1, len(self.time_interval)):
+            # Getting alpha and beta variables.
             alpha_m, alpha_h, alpha_n = _alphas(self.V_membrane[t - 1], self.V_r)
             beta_m, beta_h, beta_n = _betas(self.V_membrane[t - 1], self.V_r)
 
+            # Calculation of m, n, h particles at time t.
             self.m[t] = self.m[t - 1] + self.dt * (alpha_m * (1 - self.m[t - 1]) - beta_m * self.m[t - 1])
             self.h[t] = self.h[t - 1] + self.dt * (alpha_h * (1 - self.h[t - 1]) - beta_h * self.h[t - 1])
             self.n[t] = self.n[t - 1] + self.dt * (alpha_n * (1 - self.n[t - 1]) - beta_n * self.n[t - 1])
 
+            # Calculating conductance of Sodium and Potassium at time t.
             self.conductance_k[t] = self.n[t] ** 4 * self.max_conductivity_K
             self.conductance_na[t] = self.m[t] ** 3 * self.h[t] * self.max_conductivity_Na
 
+            # Calculating currents at time t.
             self.I_k[t] = self.conductance_k[t] * (self.V_membrane[t - 1] - self.E_k)
             self.I_na[t] = self.conductance_na[t] * (self.V_membrane[t - 1] - self.E_na)
             self.I_leak[t] = self.conductance_leak[t] * (self.V_membrane[t - 1] - self.E_leak)
             self.I_membrane[t] = self.I_k[t] + self.I_na[t] + self.I_leak[t]
 
+            # Calculating membrane potential at time t.
             self.V_membrane[t] = self.V_membrane[t - 1] + (self.dt / self.cap_membrane) * (
                     self.I_stimulus[t] - self.I_k[t] - self.I_na[t] - self.I_leak[t])
-        pass
 
     def _initial_step(self):
+        """
+        It creates arrays of membrane potential, conductivity of ions,
+        ionic currents and m, n and h particles. It also sets initial
+        values of those arrays since it will be an iterative approach
+        to calculate all those values.
+        :return:
+        """
         self.V_membrane = np.zeros(len(self.time_interval), dtype=np.float128)
         self.V_membrane[0] = self.V_m_initial
 
@@ -145,9 +171,11 @@ class HHModel:
         self.I_membrane = np.zeros(len(self.time_interval))
         self.I_membrane[0] = self.I_na[0] + self.I_k[0] + self.I_leak[0]
 
-        pass
-
     def plot(self):
+        """
+        For ease of use, it plots general properties of the neuron
+        such as membrane potential, conductivity of ions, currents etc.
+        """
         plt.plot(self.time_interval, self.m, label="m")
         plt.plot(self.time_interval, self.n, label="n")
         plt.plot(self.time_interval, self.h, label="h")
@@ -176,6 +204,15 @@ class HHModel:
         plt.show()
 
     def stimulus_signal(self, amplitude, duration, start_time=0, freq=None):
+        """
+        After simulation is initialized and simulation duration is set, this
+        function creates stimulus current to be applied to the neuron.
+        :param amplitude: Amplitude of stimulus current in Amps.
+        :param duration: Stimulus current duration in seconds.
+        :param start_time: Starting time of stimulus current in seconds.
+        :param freq: Frequency of stimulus current. Default value is None.
+        :return: time interval and stimulus signal arrays as a tuple of two elements.
+        """
         if self.I_stimulus is None:
             self.I_stimulus = np.zeros(len(self.time_interval))
         if freq is None:
