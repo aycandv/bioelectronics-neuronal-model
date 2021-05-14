@@ -220,7 +220,117 @@ class HHModel:
             print(int(start_time / self.dt))
             print(int((duration + start_time) / self.dt))
         else:
-            self.I_stimulus[int(start_time / self.dt):int((duration+start_time) / self.dt)] = amplitude * np.sin(
-                2 * np.pi * freq * self.time_interval[int(start_time / self.dt):int((duration+start_time) / self.dt)])
+            self.I_stimulus[int(start_time / self.dt):int((duration + start_time) / self.dt)] = amplitude * np.sin(
+                2 * np.pi * freq * self.time_interval[int(start_time / self.dt):int((duration + start_time) / self.dt)])
 
         return self.time_interval, self.I_stimulus
+
+
+class CSModel(HHModel):
+
+    def __init__(self, membrane_potential=-74.5e-3):
+        """
+        Initializes Connor and Steven's HHModel and all required parameters will be used
+        in simulation.
+        :param membrane_potential: Membrane potential of the cell.
+        Default value is -74.5e-3 V.
+        """
+        super().__init__(membrane_potential=-74.5e-3)
+        self.max_conductivity_A = 0.477e-3
+        self.a_0 = 0.5079
+        self.b_0 = 0.4332
+        self.E_a = -75e-3
+
+        self.a = None
+        self.b = None
+        self.I_a = None
+
+        self.tau_a = None
+        self.tau_b = None
+
+    def _initial_step(self):
+        super()._initial_step()
+        self.a = np.zeros(len(self.time_interval))
+        self.a[0] = self.a_0
+        self.b = np.zeros(len(self.time_interval))
+        self.b[0] = self.b_0
+
+        mul = 1
+
+        self.conductance_A = np.zeros(len(self.time_interval))
+        self.conductance_A[0] = self.max_conductivity_A * self.a[0] ** 3 * self.b[0]
+        self.I_a = np.zeros(len(self.time_interval))
+        self.I_a[0] = self.conductance_A[0] * (self.V_membrane[0] - self.E_a) #* 1e3
+
+        self.a_inf = np.zeros(len(self.time_interval))
+        self.a_inf[0] = ((0.0761 * np.exp(0.0314 * (self.V_membrane[0]*1e3 + 94.22))) /
+                         (1 + np.exp(0.0346 * (self.V_membrane[0]*1e3 + 1.17)))) ** (1 / 3)
+
+        self.b_inf = np.zeros(len(self.time_interval))
+        self.b_inf[0] = (1 + np.exp(0.0688 * (self.V_membrane[0]*1e3 + 53.3))) ** -4
+
+        self.tau_a = np.zeros(len(self.time_interval))
+        self.tau_a[0] = 0.3632 + 1.158 / (1 + np.exp(0.0497 * (self.V_membrane[0]*1e3 + 55.96))) * 1000
+
+        self.tau_b = np.zeros(len(self.time_interval))
+        self.tau_b[0] = 1.24 + 2.678 / (1 + np.exp(0.0624 * (self.V_membrane[0] * 1e3 + 50))) * 1000
+
+    def run(self):
+        """
+        In an iterative approach, it calculates conductivities of ions,
+        a, b, m, n and h particles, ionic currents and membrane potential
+        at each time step so that it can be plotted to observe results.
+        Before stepping into for loop, it initializes parameters such as
+        maximum conductivity before simulation starts.
+        :return:
+        """
+
+        # Initializing all variables. Setting initial parameters
+        # such as m, n, h, Vm to be able to run simulation.
+        mul = 1000
+        self._initial_step()
+        for t in range(1, len(self.time_interval)):
+            # Getting alpha and beta variables.
+
+            dv = (self.V_membrane[t - 1] - self.V_r) * 1000
+
+            alpha_m = 0.38 * (dv + 29.7) / (1 - np.exp(-(dv + 29.7) / 10)) * mul
+            alpha_h = 0.266 * np.exp(-(dv + 48) / 20) * mul
+            alpha_n = 0.02 * (45.7 + dv) / (-(np.exp((-45.7 - dv) / 10)) + 1) * mul
+
+            beta_m = 15.2 * np.exp(-0.0556 * (dv + 54.7)) * mul
+            beta_h = 3.8 / ((np.exp((-18 - dv) / 10)) + 1) * mul
+            beta_n = 0.25 * np.exp(-(dv - 55.7) / 80) * mul
+
+            # Calculation of m, n, h particles at time t.
+            self.m[t] = self.m[t - 1] + self.dt * (alpha_m * (1 - self.m[t - 1]) - beta_m * self.m[t - 1])
+            self.h[t] = self.h[t - 1] + self.dt * (alpha_h * (1 - self.h[t - 1]) - beta_h * self.h[t - 1])
+            self.n[t] = self.n[t - 1] + self.dt * (alpha_n * (1 - self.n[t - 1]) - beta_n * self.n[t - 1])
+
+            self.a_inf[t-1] = ((0.0761 * np.exp(0.0314 * (dv + 94.22))) /
+                             (1 + np.exp(0.0346 * (dv + 1.17)))) ** (1 / 3)
+            self.b_inf[t-1] = (1 + np.exp(0.0688 * (dv + 53.3))) ** -4
+
+            self.tau_a[t-1] = 0.3632 + 1.158 / (1 + np.exp(0.0497 * (dv + 55.96))) * 1000
+            self.tau_b[t-1] = 1.24 + 2.678 / (1 + np.exp(0.0624 * (dv + 50))) * 1000
+
+            self.a[t] = self.a[t-1] + ((self.a_inf[t-1] - self.a[t-1]) / self.tau_a[t-1])
+            self.b[t] = self.b[t-1] + ((self.b_inf[t-1] - self.b[t-1]) / self.tau_b[t-1])
+
+            # Calculating conductance of Sodium and Potassium at time t.
+            self.conductance_k[t] = self.n[t] ** 4 * self.max_conductivity_K
+            self.conductance_na[t] = self.m[t] ** 3 * self.h[t] * self.max_conductivity_Na
+            self.conductance_A[t] = self.max_conductivity_A * self.a[t] ** 3 * self.b[t]
+
+            # Calculating currents at time t.
+
+            self.I_k[t] = self.conductance_k[t] * (self.V_membrane[t - 1] - self.E_k)
+            self.I_na[t] = self.conductance_na[t] * (self.V_membrane[t - 1] - self.E_na)
+            self.I_leak[t] = self.conductance_leak[t] * (self.V_membrane[t - 1] - self.E_leak)
+            self.I_a[t] = self.conductance_A[t] * (self.V_membrane[t - 1] - self.E_a)
+
+            self.I_membrane[t] = self.I_k[t] + self.I_na[t] + self.I_leak[t] + self.I_a[t]
+
+            # Calculating membrane potential at time t.
+            self.V_membrane[t] = self.V_membrane[t - 1] + (self.dt / self.cap_membrane) * (
+                    self.I_stimulus[t] - self.I_membrane[t])
